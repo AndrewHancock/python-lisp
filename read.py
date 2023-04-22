@@ -1,7 +1,8 @@
 from enum import Enum, auto
 from re import compile
+from typing import Callable
 
-from lisp_ast import String, Number, Symbol, Expression, List
+from lisp_ast import String, Number, Symbol, Expression, List, QuotedExpression
 
 
 class TokenTypes(Enum):
@@ -53,29 +54,55 @@ def tokenize_string(string):
                 raise Exception("Unknown character {} at {}: {}", c, i, string[i:15])
 
 
-def parse_exp(tokens: list[Token], acc: list[Expression]) -> list[Expression]:
+class ReduceType(Enum):
+    LIST = auto()
+    QUOTE = auto()
+
+
+def reduce_expression(acc: list[Expression | ReduceType],
+                      reduce_type: ReduceType,
+                      reduce: Callable[[list[Expression]], Expression]
+                      ) -> list[Expression | ReduceType]:
+    for i in range(len(acc) - 1, -1, -1):
+        if acc[i] == reduce_type:
+            exp = reduce(acc[i + 1:])
+            return push_exp(acc[:i], exp)
+    raise Exception("Expected ReduceType not found.")
+
+
+def push_exp(stack: list[Expression | ReduceType], exp: Expression) -> list[Expression | ReduceType]:
+    if stack and stack[-1] == ReduceType.QUOTE:
+        stack[-1] = QuotedExpression(exp)
+    else:
+        stack.append(exp)
+    return stack
+
+
+def parse_exp(tokens: list[Token], acc: list[Expression | ReduceType]) -> list[Expression]:
     if not tokens:
         return acc
 
     match tokens:
         case [(TokenTypes.SYMBOL, text), *rest]:
-            acc.append(Symbol(text))
+            push_exp(acc, Symbol(text))
             return parse_exp(rest, acc)
         case [(TokenTypes.NUMBER, text), *rest]:
-            acc.append(Number(float(text)))
+            push_exp(acc, Number(float(text)))
             return parse_exp(rest, acc)
         case [(TokenTypes.STRING, text), *rest]:
-            acc.append(String(text))
+            push_exp(acc, String(text))
             return parse_exp(rest, acc)
         case [(TokenTypes.L_PAREN, _), *rest]:
-            acc.append(TokenTypes.L_PAREN)
+            acc.append(ReduceType.LIST)
             return parse_exp(rest, acc)
-        case[(TokenTypes.R_PAREN, _), *rest]:
-            for i in range(len(acc) -1, -1, -1):
-                if acc[i] == TokenTypes.L_PAREN:
-                    acc[i] = List(acc[i + 1:])
-                    return parse_exp(rest, acc[:i + 1])
-            raise Exception("Unmatched closing paren!")
+        case [(TokenTypes.R_PAREN, _), *rest]:
+            acc = reduce_expression(acc,
+                                    ReduceType.LIST,
+                                    List)
+            return parse_exp(rest, acc)
+        case [(TokenTypes.QUOTE, _), *rest]:
+            acc.append(ReduceType.QUOTE)
+            return parse_exp(rest, acc)
         case _:
             raise Exception("Unknown form.")
 

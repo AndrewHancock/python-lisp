@@ -1,5 +1,5 @@
 from read import read_exp, TokenTypes, parse_exp
-from parse import TokenParser
+
 
 while True:
     tokens = None
