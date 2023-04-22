@@ -3,8 +3,9 @@ from dataclasses import dataclass
 
 
 @dataclass
-class Expression(ABC):
+class Expression:
     pass
+
 
 @dataclass
 class Symbol(Expression):

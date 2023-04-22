@@ -1,9 +1,7 @@
-from collections.abc import Iterable
 from enum import Enum, auto
 from re import compile
-from dataclasses import dataclass
-from abc import ABC
-from typing import Iterator, Any
+
+from lisp_ast import String, Number, Symbol, Expression, List
 
 
 class TokenTypes(Enum):
@@ -55,87 +53,35 @@ def tokenize_string(string):
                 raise Exception("Unknown character {} at {}: {}", c, i, string[i:15])
 
 
-class RewindableIterator(Iterator):
-    def __init__(self, wrapped_iterator: Iterator):
-        self._wrapped_iterator = wrapped_iterator
-        self._buffer = []
-        self._rewind = False
-        self._mark = False
-        self._idx = -1
+def parse_exp(tokens: list[Token], acc: list[Expression]) -> list[Expression]:
+    if not tokens:
+        return acc
 
-    def __next__(self) -> Any:
-        if self._mark:
-            if self._rewind and self._idx < len(self._buffer):
-                next_item = self._buffer[self._idx]
-            else:
-                next_item = next(self._wrapped_iterator)
-                self._buffer.append(next_item)
-            self._idx += 1
-            return next_item
-        return next(self._wrapped_iterator)
-        pass
-
-    def rewind(self):
-        self._rewind = True
-        self._idx = 0
-
-    def mark(self):
-        self._mark = True
-        self._idx = 0
-
-    def reset(self):
-        self._rewind = False
-        self._mark = False
-        self._buffer.clear()
-        self._idx = -1
-
-
-class ExpressionParser:
-
-    def __init__(self):
-        self._tokens = None
-        self._idx = -1
-
-    def parse(self, tokens: list[Token], idx=0):
-        self._tokens = 0
-        self._idx = -1
-
-    def parse_exp(self) -> Expression:
-        idx = self._idx
-
-        return self.parse_list()
-
-    def parse_list(self):
-        list_stack = []
-
-        while self._idx < len(self._tokens):
-            token = self._tokens[self._idx]
-            match token:
-                case TokenTypes.L_PAREN, _:
-                    list_stack.append([])
-                case TokenTypes.R_PAREN, _:
-                    temp = list_stack.pop()
-
-                    if not list_stack:
-                        return temp
-                    else:
-                        list_stack[-1].append(temp)
-                case TokenTypes.SYMBOL, text:
-                    list_stack[-1].append(Symbol(text))
-                case TokenTypes.NUMBER, text:
-                    list_stack[-1].append(float(text))
-                case TokenTypes.STRING, text:
-                    list_stack[-1].append(text)
-        raise Exception("Unterminated list!")
-
-
+    match tokens:
+        case [(TokenTypes.SYMBOL, text), *rest]:
+            acc.append(Symbol(text))
+            return parse_exp(rest, acc)
+        case [(TokenTypes.NUMBER, text), *rest]:
+            acc.append(Number(float(text)))
+            return parse_exp(rest, acc)
+        case [(TokenTypes.STRING, text), *rest]:
+            acc.append(String(text))
+            return parse_exp(rest, acc)
+        case [(TokenTypes.L_PAREN, _), *rest]:
+            acc.append(TokenTypes.L_PAREN)
+            return parse_exp(rest, acc)
+        case[(TokenTypes.R_PAREN, _), *rest]:
+            for i in range(len(acc) -1, -1, -1):
+                if acc[i] == TokenTypes.L_PAREN:
+                    acc[i] = List(acc[i + 1:])
+                    return parse_exp(rest, acc[:i + 1])
+            raise Exception("Unmatched closing paren!")
+        case _:
+            raise Exception("Unknown form.")
 
 
 def read_exp():
     s = input()
     tokens = list(tokenize_string(s))
     print(tokens)
-
-    parsed_lists = parse_list(tokens)
-    print(parsed_lists)
     return tokens
